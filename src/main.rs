@@ -20,15 +20,6 @@ pub struct MapGrid{
     pub height: u32
 }
 
-// pub struct Cell{
-//     // x, y are coordinates w.r.t. to the grid crete by MapGrid so no absolute SDL values
-//     pub cell_body: Rect,
-//     pub x: u32,
-//     pub y: u32,
-//     pub alive: bool
-// }
-
-
 impl MapGrid{
     pub fn new(spacing: usize,width: u32,height: u32) -> Self{
         MapGrid{ 
@@ -47,27 +38,6 @@ impl MapGrid{
         }
     }
 }
-
-// impl Cell{
-//     pub fn new(x: i32, y:i32) -> Self{
-//         Cell{
-//             cell_body: Rect::new(x*LENGHT_CONST,y*LENGHT_CONST, LENGHT_CONST as u32,LENGHT_CONST as u32),
-//             x: x as u32,
-//             y: y as u32,
-//             alive: false
-//         }
-//     }
-//     pub fn render(&self,canvas: &mut sdl2::render::Canvas<Window>){
-//         if self.alive{
-//             canvas.set_draw_color(Color::RGB(50,50,50));
-//         }
-//         else {
-//             canvas.set_draw_color(Color::RGB(0,0,0));
-//         }
-//         canvas.fill_rect(self.cell_body).ok().unwrap_or_default();
-//     }
-
-// }
 
 fn load_map() -> Result<Vec<Vec<i32>>, String> {
     let file = File::open("life_map.txt").map_err(|e| e.to_string())?;
@@ -101,12 +71,67 @@ pub fn render_cells(canvas: &mut sdl2::render::Canvas<Window>,map_of_cell: Vec<V
     }
 }
 
+pub fn rules(state: i32,neighs:i32) -> i32{
+    if state == 1{
+        if neighs < 2{
+            return 0;
+        }
+        else if neighs > 3{
+            return 0;
+        }
+        else{
+            return 1;
+        }
+    }
+    else if state == 0{
+        if neighs == 3{
+            return 1;
+        }
+        else{
+            return 0;
+        }
+    }
+    0 
+}
+
+pub fn count_neighs(pos_x: i32,pos_y:i32,board: &Vec<Vec<i32>>)->i32{
+    let mut count_neighs = 0;
+    let directions = vec![-1,0,1];
+    for dx in &directions{
+        for dy in &directions{
+            if *dx == 0 && *dy == 0{
+                continue;
+            }
+            let mut row_neig = pos_x + dx;
+            let mut col_neig = pos_y + dy;
+            if row_neig > (board.len()-1).try_into().unwrap(){
+                row_neig = 0;
+            }
+            else if row_neig < 0{
+                row_neig = (board.len()-1).try_into().unwrap();
+            }
+            if col_neig > (board[0].len()-1).try_into().unwrap(){
+                col_neig = 0;
+            }
+            else if col_neig < 0{
+                col_neig = (board[0].len() - 1).try_into().unwrap();
+            }
+            count_neighs += board[row_neig as usize][col_neig as usize]
+        }
+    }
+    count_neighs
+}
+
+fn reset_life_board(life_board: &mut Vec<Vec<i32>>) {
+    let rows = life_board.len();
+    let cols = if rows > 0 { life_board[0].len() } else { 0 };
+    *life_board = vec![vec![0; cols]; rows];
+}
+
 pub fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let mut list_of_cells = load_map()?;
-    // let mut ghost_list_of_cells: Vec<Vec<Cell>> = vec![vec![]];
-    // reading sizes of the map to decide fnal size of the SDL window
     let num_rows = list_of_cells.len(); 
     let num_cols = list_of_cells[0].len();
     let window = video_subsystem.window("Conway", num_cols  as u32*LENGHT_CONST as u32, num_rows  as u32*LENGHT_CONST as u32)
@@ -114,7 +139,6 @@ pub fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    
     let mut event_pump = sdl_context.event_pump()?;
     let (map_width, map_height) = canvas.output_size().unwrap();
     let my_grid = MapGrid::new(LENGHT_CONST as usize, map_width, map_height);
@@ -130,15 +154,20 @@ pub fn main() -> Result<(), String> {
                 _ => {}
             }
         }
-        
+        let old_list_of_cells = list_of_cells.clone();
+        reset_life_board(&mut list_of_cells);
+        for (row_index, row) in old_list_of_cells.iter().enumerate() {
+            for (col_index, &value) in row.iter().enumerate() {
+                let neighs = count_neighs(row_index as i32,col_index as i32,&old_list_of_cells);
+                list_of_cells[row_index][col_index] = rules(old_list_of_cells[row_index][col_index],neighs);
+            }
+        }
         canvas.set_draw_color(Color::RGB(255, 255, 255));
         canvas.clear();
         render_cells(&mut canvas, list_of_cells.clone());
         my_grid.render(&mut canvas);
-        // my_cell.alive = true;
-        // my_cell.render(&mut canvas);
         canvas.present();
-        std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
+        std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 10));
     }
 
     Ok(())
